@@ -5,14 +5,14 @@ from .serializers import MovieSerializer, MovieOrderSerializer
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from django.shortcuts import get_object_or_404
-from users.permissions import IsAdminOrReadOnly
+from users.permissions import IsAdminOrReadOnly, IsUserPermission
 from rest_framework.pagination import PageNumberPagination
 
 
 # Create your views here.
 class MoviesView(APIView, PageNumberPagination):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly, IsUserPermission]
 
     def get(self, request: Request) -> Response:
         movies = Movie.objects.all()
@@ -25,6 +25,7 @@ class MoviesView(APIView, PageNumberPagination):
     def post(self, request: Request) -> Response:
         serializer = MovieSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        self.check_object_permissions(request, serializer)
 
         serializer.save(user_id=request.user.id)
 
@@ -33,7 +34,7 @@ class MoviesView(APIView, PageNumberPagination):
 
 class MovieDetailView(APIView):
     authentication_classes = [JWTAuthentication]
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request: Request, movie_id: int) -> Response:
         movie = get_object_or_404(Movie, pk=movie_id)
@@ -51,20 +52,15 @@ class MovieDetailView(APIView):
 
 
 class MovieOrderView(APIView):
-    def get(self, request: Request, movie_id: int) -> Response:
-        book_obj = get_object_or_404(Movie, pk=movie_id)
-        bookmarks = MovieOrder.objects.filter(book=book_obj)
-
-        serializer = MovieOrderSerializer(bookmarks, many=True)
-
-        return Response(serializer.data, status.HTTP_200_OK)
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticatedOrReadOnly]
 
     def post(self, request: Request, movie_id: int) -> Response:
         movie_obj = get_object_or_404(Movie, pk=movie_id)
-        self.check_object_permissions(request, movie_obj)
 
+        self.check_object_permissions(request, movie_obj)
         serializer = MovieOrderSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        serializer.save(movies=movie_obj, users=request.user)
 
         return Response(serializer.data, status.HTTP_201_CREATED)
